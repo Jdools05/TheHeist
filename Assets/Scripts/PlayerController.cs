@@ -1,54 +1,109 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using Cinemachine;
+using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class PlayerController : MonoBehaviour
 {
+    public static float playerSpeed = 15f;
     public float speed;
     public float jumpForce;
     public float gravity;
-    private Vector3 moveDir = Vector3.zero;
+    public float alertSpeed;
+    public float turnSmoothTime = 0.1f;
     public CharacterController controller;
+    public Camera thirdPersonCamera;
+    public Camera firstPersonCamera;
+    public ThirdPersonCameraController thirdPersonCameraController;
+    public FirstPersonCameraController firstPersonCameraController;
+    [HideInInspector]
+    public bool headOnObject;
+
 
     protected Joystick joystick;
-    protected JoyButton joyButton;
+    public JoyButton jumpJoyButton;
+    private Vector3 moveDir = Vector3.zero;
+    private float alertLevel = 0f;
 
+
+    float yspeed = 0f;
 
     void Start()
-    {   
+    {
+        playerSpeed = speed;
+        thirdPersonCamera.enabled = true;
+        firstPersonCamera.enabled = false;
+        thirdPersonCameraController.enabled = true;
+        firstPersonCameraController.enabled = false;
         // collects proper gameobjects needed
-        if (!controller) controller = gameObject.GetComponent<CharacterController>();
         Joystick[] tempj = FindObjectsOfType<Joystick>();
         foreach (Joystick j in tempj)
         {
             if (j.CompareTag("MovementJoystick")) joystick = j;
         }
-        JoyButton[] tempb = FindObjectsOfType<JoyButton>();
-        foreach (JoyButton b in tempb)
+        if (!jumpJoyButton)
         {
-            if (b.CompareTag("JumpButton")) joyButton = b;
+            JoyButton[] tempb = FindObjectsOfType<JoyButton>();
+            foreach (JoyButton b in tempb)
+            {
+                if (b.CompareTag("JumpButton")) jumpJoyButton = b;
+            }
         }
     }
 
     void Update()
     {
-
+        if (alertLevel >= 100f) SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
+            SwitchCamera();
+        }
         if (controller.isGrounded)
         {
-            // defines players physics
-            moveDir = new Vector3(joystick.Horizontal + Input.GetAxis("Horizontal"), 0, joystick.Vertical + Input.GetAxis("Vertical"));
-            moveDir = transform.TransformDirection(moveDir);
-            moveDir *= speed;
-
-            if (joyButton.Pressed)
+            yspeed = 0f;
+            if (jumpJoyButton.Pressed)
             {
-                moveDir.y = jumpForce;
+                yspeed = jumpForce;
             }
         }
-        // impliments player physics
-        moveDir.y -= gravity * Time.deltaTime;
-        controller.Move(moveDir * Time.deltaTime);
-        // handles player rotation based on camera rotation
-        transform.Rotate(0, (Camera.main.transform.rotation.y - transform.rotation.y), 0);
+        else
+        {
+            yspeed -= gravity * Time.deltaTime;
+        }
+        CollisionFlags flags = controller.Move(new Vector3(0f, yspeed, 0f));
+        if (CollisionFlags.CollidedAbove == flags) yspeed = 0f;
+
+        if (firstPersonCamera.enabled)
+        {
+            moveDir = new Vector3(joystick.Horizontal + Input.GetAxis("Horizontal"), 0, joystick.Vertical + Input.GetAxis("Vertical")).normalized;
+            if (moveDir.magnitude >= 0.1f)
+            {
+                float targetAngle = Mathf.Atan2(moveDir.x, moveDir.z) * Mathf.Rad2Deg + firstPersonCamera.transform.eulerAngles.y;
+                Vector3 endDir = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
+
+                controller.Move(endDir * playerSpeed * Time.deltaTime * moveDir.magnitude);
+            }
+
+        }
+    }
+
+    public void SwitchCamera()
+    {
+        thirdPersonCamera.enabled = !thirdPersonCamera.enabled;
+        firstPersonCamera.enabled = !firstPersonCamera.enabled;
+        thirdPersonCameraController.enabled = thirdPersonCamera.enabled;
+        firstPersonCameraController.enabled = firstPersonCamera.enabled;
+    }
+
+    public void AddAlert()
+    {
+        alertLevel += alertSpeed * Time.deltaTime;
+    }
+    public float GetAlert()
+    {
+        return alertLevel;
     }
 }
